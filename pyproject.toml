@@ -79,6 +79,7 @@ omit = [
     "*/test_*.py",
     "*/__pycache__/*",
     "*/site-packages/*",
+    "*/config.py",  # Configuration files typically don't need coverage
 ]
 
 [tool.coverage.report]
