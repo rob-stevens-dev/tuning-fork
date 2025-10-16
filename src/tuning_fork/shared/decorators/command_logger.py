@@ -231,7 +231,7 @@ def with_command_logging(
     """
     def decorator(func: F) -> F:
         # Get logging configuration
-        log_config = config.config.get('logging', {})
+        log_config = config.config.get('logging', {}) if config else {}
         log_file = log_config.get('filename', 'logging/commands.db')
         auto_create = log_config.get('auto_create', True)
         auto_backup = log_config.get('auto_backup', False)
