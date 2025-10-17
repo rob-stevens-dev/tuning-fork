@@ -10,7 +10,6 @@ import logging
 from typing import Any, Optional
 
 from tuning_fork.config import Config
-from tuning_fork.testing_modules.pgsql import report_settings
 
 # Module-level logger
 logger = logging.getLogger(__name__)
@@ -81,7 +80,7 @@ class ModuleRunner:
         Run a PostgreSQL testing module.
         
         Args:
-            module_name: Name of the module to run (e.g., 'check_settings').
+            module_name: Name of the module to run (e.g., 'check_settings', 'check_connections').
         
         Returns:
             Dictionary containing module execution results.
@@ -97,69 +96,146 @@ class ModuleRunner:
         """
         logger.info(f"Running PostgreSQL module: {module_name}")
         
+        result: dict[str, Any] = {
+            'module': module_name,
+            'status': 'unknown',
+            'database_type': 'pgsql'
+        }
+        
         try:
             if module_name == 'check_settings':
-                # Import at runtime to avoid circular dependencies
-                # OLD: from tuning_fork.testing_modules.pgsql.config import (
-                # NEW:
                 from tuning_fork.testing_modules.pgsql import (
                     check_settings,
-                    report_settings,
+                    report_settings
                 )
                 
-                # Get workload type from config (default to OLTP)
+                # Get workload type from config
                 workload_type = self.config.get(
-                    'testing_modules.pgsql.workload_type',
-                    'OLTP'
-                )
-                
-                # Execute check with workload type
-                results = check_settings(
-                    self.config,
-                    workload_type=workload_type
+                    'testing_modules.pgsql.check_settings.workload_type',
+                    default='OLTP'
                 )
                 
                 # Get report format from config
                 report_format = self.config.get(
-                    f'testing_modules.pgsql.{module_name}.report_format',
-                    'text'
+                    'testing_modules.pgsql.check_settings.report_format',
+                    default='text'
+                )
+                
+                # Run check
+                check_results = check_settings(self.config, workload_type=workload_type)
+                
+                # Generate report
+                report = report_settings(check_results, format=report_format)
+                
+                result.update({
+                    'status': 'success',
+                    'results': check_results,
+                    'report': report,
+                    'workload_type': workload_type
+                })
+                
+            elif module_name == 'check_connections':
+                from tuning_fork.testing_modules.pgsql import (
+                    check_connections,
+                    report_connections
+                )
+                
+                # Get custom thresholds from config if provided
+                custom_thresholds = self.config.get(
+                    'testing_modules.pgsql.check_connections.thresholds',
+                    default=None
+                )
+                
+                # Get report format from config
+                report_format = self.config.get(
+                    'testing_modules.pgsql.check_connections.report_format',
+                    default='text'
+                )
+                
+                # Get include_ok flag from config
+                include_ok = self.config.get(
+                    'testing_modules.pgsql.check_connections.include_ok',
+                    default=False
+                )
+                
+                # Run check
+                check_results = check_connections(
+                    self.config,
+                    thresholds=custom_thresholds
                 )
                 
                 # Generate report
-                report = report_settings(results, format=report_format)
+                report = report_connections(
+                    check_results,
+                    format=report_format,
+                    include_ok=include_ok
+                )
                 
-                return {
+                result.update({
                     'status': 'success',
-                    'module': module_name,
-                    'results': results,
+                    'results': check_results,
                     'report': report,
-                    'workload_type': workload_type
-                }
-            
+                    'total_findings': len(check_results),
+                    'critical_count': len([r for r in check_results if r.status == 'CRITICAL']),
+                    'warning_count': len([r for r in check_results if r.status == 'WARNING'])
+                })
+                
             else:
-                raise ModuleRunnerError(f"Unknown PostgreSQL module: {module_name}")
-        
+                result.update({
+                    'status': 'error',
+                    'error': f"Unknown PostgreSQL module: {module_name}"
+                })
+                logger.error(f"Unknown module: {module_name}")
+            
         except Exception as exc:
-            logger.error(f"Failed to run module '{module_name}': {exc}")
-            return {
+            result.update({
                 'status': 'error',
-                'module': module_name,
                 'error': str(exc)
-            }
+            })
+            logger.error(f"Module execution failed: {exc}", exc_info=True)
+        
+        return result
+    
+    def run_mysql_module(self, module_name: str) -> dict[str, Any]:
+        """
+        Run a MySQL/MariaDB testing module.
+        
+        Args:
+            module_name: Name of the module to run (e.g., 'check_settings').
+        
+        Returns:
+            Dictionary containing module execution results.
+        
+        Raises:
+            ModuleRunnerError: If module is unknown or execution fails.
+        
+        Example:
+            >>> runner = ModuleRunner(config)
+            >>> result = runner.run_mysql_module('check_settings')
+            >>> print(result['status'])
+            'success'
+        """
+        logger.info(f"Running MySQL/MariaDB module: {module_name}")
+        
+        return {
+            'status': 'error',
+            'module': module_name,
+            'error': f"MySQL/MariaDB module '{module_name}' not yet implemented"
+        }
     
     def run_modules(self, db_type: str) -> list[dict[str, Any]]:
         """
         Run all enabled modules for a database type.
         
         Args:
-            db_type: Database type (e.g., 'pgsql', 'mysql', 'mariadb').
+            db_type: Database type (e.g., 'pgsql', 'mysql_mariadb').
         
         Returns:
             List of module execution result dictionaries.
         
         Example:
             >>> runner = ModuleRunner(config)
-            >>> results = runner.run_modules('mysql')
+            >>> results = runner.run_modules('pgsql')
             >>> for result in results:
             ...     print(f"{result['module']}: {result['status']}")
         """
@@ -175,9 +251,13 @@ class ModuleRunner:
                 if db_type == 'pgsql':
                     result = self.run_pgsql_module(module_name)
                 elif db_type in ('mysql', 'mariadb', 'mysql_mariadb'):
-                    result = self.run_mysql_module(module_name)  # ADD THIS LINE
+                    result = self.run_mysql_module(module_name)
                 else:
-                    raise ModuleRunnerError(f"Unsupported database type: {db_type}")
+                    result = {
+                        'status': 'error',
+                        'module': module_name,
+                        'error': f"Unsupported database type: {db_type}"
+                    }
                 
                 results.append(result)
                 
@@ -264,68 +344,3 @@ class ModuleRunner:
             print()
         
         print("=" * 80)
-        
-    def run_mysql_module(self, module_name: str) -> dict[str, Any]:
-        """
-        Run a MySQL/MariaDB testing module.
-        
-        Args:
-            module_name: Name of the module to run (e.g., 'check_settings').
-        
-        Returns:
-            Dictionary containing module execution results.
-        
-        Raises:
-            ModuleRunnerError: If module is unknown or execution fails.
-        
-        Example:
-            >>> runner = ModuleRunner(config)
-            >>> result = runner.run_mysql_module('check_settings')
-            >>> print(result['status'])
-            'success'
-        """
-        logger.info(f"Running MySQL/MariaDB module: {module_name}")
-        
-        try:
-            if module_name == 'check_settings':
-                # Import at runtime to avoid circular dependencies
-                from tuning_fork.testing_modules.mysql.check_settings import (
-                    check_settings,
-                    report_settings,
-                )
-                
-                # Get workload type from config (default to OLTP)
-                workload_type = self.config.get(
-                    f'testing_modules.mysql.workload_type',
-                    'OLTP'
-                )
-                
-                # Execute check
-                results = check_settings(self.config, workload_type=workload_type)
-                
-                # Get report format from config
-                report_format = self.config.get(
-                    f'testing_modules.mysql.{module_name}.report_format',
-                    'text'
-                )
-                
-                # Generate report
-                report = report_settings(results, format=report_format)
-                
-                return {
-                    'status': 'success',
-                    'module': module_name,
-                    'results': results,
-                    'report': report
-                }
-            
-            else:
-                raise ModuleRunnerError(f"Unknown MySQL/MariaDB module: {module_name}")
-        
-        except Exception as exc:
-            logger.error(f"Failed to run module '{module_name}': {exc}")
-            return {
-                'status': 'error',
-                'module': module_name,
-                'error': str(exc)
-            }

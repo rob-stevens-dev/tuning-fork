@@ -1,30 +1,41 @@
 """
-PostgreSQL configuration testing modules.
+PostgreSQL testing modules package.
 
-Contains modules for checking and tuning PostgreSQL configuration settings
-with support for multiple workload types (OLTP, OLAP, Mixed).
+Contains modules for checking, reporting, and tuning PostgreSQL database
+configurations, connections, and performance.
 """
 
 from tuning_fork.testing_modules.pgsql.check_settings import (
     CheckResult,
     ChangeLogEntry,
+    apply_settings,
     check_settings,
     report_settings,
-    apply_settings,
     rollback_settings,
-    RECOMMENDED_SETTINGS_OLTP,
-    RECOMMENDED_SETTINGS_OLAP,
-    RECOMMENDED_SETTINGS_MIXED,
+)
+
+from tuning_fork.testing_modules.pgsql.check_connections import (
+    ConnectionCheckResult,
+    ConnectionAction,
+    check_connections,
+    report_connections,
+    apply_actions,
+    rollback_actions,
 )
 
 __all__ = [
+    # check_settings exports
     'CheckResult',
     'ChangeLogEntry',
+    'apply_settings',
     'check_settings',
     'report_settings',
-    'apply_settings',
     'rollback_settings',
-    'RECOMMENDED_SETTINGS_OLTP',
-    'RECOMMENDED_SETTINGS_OLAP',
-    'RECOMMENDED_SETTINGS_MIXED',
+    # check_connections exports
+    'ConnectionCheckResult',
+    'ConnectionAction',
+    'check_connections',
+    'report_connections',
+    'apply_actions',
+    'rollback_actions',
 ]
