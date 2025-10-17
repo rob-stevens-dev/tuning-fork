@@ -139,14 +139,14 @@ class ModuleRunner:
         Run all enabled modules for a database type.
         
         Args:
-            db_type: Database type (e.g., 'pgsql', 'mysql_mariadb').
+            db_type: Database type (e.g., 'pgsql', 'mysql', 'mariadb').
         
         Returns:
             List of module execution result dictionaries.
         
         Example:
             >>> runner = ModuleRunner(config)
-            >>> results = runner.run_modules('pgsql')
+            >>> results = runner.run_modules('mysql')
             >>> for result in results:
             ...     print(f"{result['module']}: {result['status']}")
         """
@@ -161,6 +161,8 @@ class ModuleRunner:
             try:
                 if db_type == 'pgsql':
                     result = self.run_pgsql_module(module_name)
+                elif db_type in ('mysql', 'mariadb', 'mysql_mariadb'):
+                    result = self.run_mysql_module(module_name)  # ADD THIS LINE
                 else:
                     raise ModuleRunnerError(f"Unsupported database type: {db_type}")
                 
@@ -249,3 +251,68 @@ class ModuleRunner:
             print()
         
         print("=" * 80)
+        
+    def run_mysql_module(self, module_name: str) -> dict[str, Any]:
+        """
+        Run a MySQL/MariaDB testing module.
+        
+        Args:
+            module_name: Name of the module to run (e.g., 'check_settings').
+        
+        Returns:
+            Dictionary containing module execution results.
+        
+        Raises:
+            ModuleRunnerError: If module is unknown or execution fails.
+        
+        Example:
+            >>> runner = ModuleRunner(config)
+            >>> result = runner.run_mysql_module('check_settings')
+            >>> print(result['status'])
+            'success'
+        """
+        logger.info(f"Running MySQL/MariaDB module: {module_name}")
+        
+        try:
+            if module_name == 'check_settings':
+                # Import at runtime to avoid circular dependencies
+                from tuning_fork.testing_modules.mysql.check_settings import (
+                    check_settings,
+                    report_settings,
+                )
+                
+                # Get workload type from config (default to OLTP)
+                workload_type = self.config.get(
+                    f'testing_modules.mysql.workload_type',
+                    'OLTP'
+                )
+                
+                # Execute check
+                results = check_settings(self.config, workload_type=workload_type)
+                
+                # Get report format from config
+                report_format = self.config.get(
+                    f'testing_modules.mysql.{module_name}.report_format',
+                    'text'
+                )
+                
+                # Generate report
+                report = report_settings(results, format=report_format)
+                
+                return {
+                    'status': 'success',
+                    'module': module_name,
+                    'results': results,
+                    'report': report
+                }
+            
+            else:
+                raise ModuleRunnerError(f"Unknown MySQL/MariaDB module: {module_name}")
+        
+        except Exception as exc:
+            logger.error(f"Failed to run module '{module_name}': {exc}")
+            return {
+                'status': 'error',
+                'module': module_name,
+                'error': str(exc)
+            }
