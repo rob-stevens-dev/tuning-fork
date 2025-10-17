@@ -208,3 +208,4 @@ __marimo__/
 
 config/config.dev.yml
 logging
+scripts

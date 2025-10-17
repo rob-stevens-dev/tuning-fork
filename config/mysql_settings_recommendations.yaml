@@ -1,0 +1,319 @@
+# External configuration file for MySQL/MariaDB recommended settings
+# This allows administrators to customize recommendations without modifying code
+#
+# Future enhancement: The check_settings module can be modified to load settings
+# from this file instead of using hardcoded RECOMMENDED_SETTINGS_OLTP
+
+# Workload type configurations
+workloads:
+  OLTP:
+    description: "Online Transaction Processing - optimized for many concurrent short transactions"
+    settings:
+      max_connections:
+        value: 151
+        unit: null
+        impact: "Maximum number of concurrent client connections"
+        critical_threshold: 50
+        scope: "GLOBAL"
+        dynamic: true
+        notes: "Adjust based on your application's concurrency needs"
+      
+      innodb_buffer_pool_size:
+        value: "2G"
+        unit: "memory"
+        impact: "InnoDB buffer pool size for caching data and indexes"
+        critical_threshold: "512M"
+        scope: "GLOBAL"
+        dynamic: false
+        notes: "Should be 70-80% of available RAM on dedicated database servers"
+      
+      innodb_log_file_size:
+        value: "512M"
+        unit: "memory"
+        impact: "Size of each InnoDB redo log file"
+        critical_threshold: "48M"
+        scope: "GLOBAL"
+        dynamic: false  # Dynamic in MySQL 8.0+
+        notes: "Larger values reduce checkpoint frequency but increase crash recovery time"
+      
+      innodb_flush_log_at_trx_commit:
+        value: 1
+        unit: null
+        impact: "Controls durability of transactions (0=fast/risky, 1=safe, 2=balanced)"
+        critical_threshold: null
+        scope: "GLOBAL"
+        dynamic: true
+        notes: "1 is ACID compliant, 2 is faster but risks ~1 second of transactions on OS crash"
+      
+      innodb_flush_method:
+        value: "O_DIRECT"
+        unit: null
+        impact: "How InnoDB flushes data to disk"
+        critical_threshold: null
+        scope: "GLOBAL"
+        dynamic: false
+        notes: "O_DIRECT avoids double buffering with OS cache"
+      
+      innodb_file_per_table:
+        value: "ON"
+        unit: null
+        impact: "Store each InnoDB table in its own file"
+        critical_threshold: null
+        scope: "GLOBAL"
+        dynamic: true
+        notes: "Recommended for easier table management and better disk space reclamation"
+      
+      max_allowed_packet:
+        value: "64M"
+        unit: "memory"
+        impact: "Maximum size of one packet or generated/intermediate string"
+        critical_threshold: "1M"
+        scope: "GLOBAL"
+        dynamic: true
+        notes: "Increase if handling large BLOBs or long queries"
+      
+      thread_cache_size:
+        value: 32
+        unit: null
+        impact: "Number of threads server caches for reuse"
+        critical_threshold: 8
+        scope: "GLOBAL"
+        dynamic: true
+        notes: "Reduces thread creation overhead for new connections"
+      
+      query_cache_size:
+        value: 0
+        unit: "memory"
+        impact: "Query cache size (deprecated in MySQL 8.0)"
+        critical_threshold: null
+        scope: "GLOBAL"
+        dynamic: true
+        notes: "Deprecated and removed in MySQL 8.0 - use alternative caching strategies"
+      
+      query_cache_type:
+        value: 0
+        unit: null
+        impact: "Query cache type (deprecated in MySQL 8.0)"
+        critical_threshold: null
+        scope: "GLOBAL"
+        dynamic: true
+        notes: "0=OFF, deprecated and removed in MySQL 8.0"
+      
+      tmp_table_size:
+        value: "64M"
+        unit: "memory"
+        impact: "Maximum size of internal in-memory temporary tables"
+        critical_threshold: "16M"
+        scope: "GLOBAL"
+        dynamic: true
+        notes: "Works in conjunction with max_heap_table_size"
+      
+      max_heap_table_size:
+        value: "64M"
+        unit: "memory"
+        impact: "Maximum size for user-created MEMORY tables"
+        critical_threshold: "16M"
+        scope: "GLOBAL"
+        dynamic: true
+        notes: "Should match tmp_table_size for consistency"
+      
+      sort_buffer_size:
+        value: "2M"
+        unit: "memory"
+        impact: "Buffer size for sorting operations"
+        critical_threshold: "256K"
+        scope: "BOTH"
+        dynamic: true
+        notes: "Per-connection buffer - don't set too high with many connections"
+      
+      read_buffer_size:
+        value: "1M"
+        unit: "memory"
+        impact: "Buffer size for sequential table scans"
+        critical_threshold: "128K"
+        scope: "BOTH"
+        dynamic: true
+        notes: "Per-connection buffer - increase for tables with frequent scans"
+      
+      read_rnd_buffer_size:
+        value: "2M"
+        unit: "memory"
+        impact: "Buffer size for reading rows in sorted order"
+        critical_threshold: "256K"
+        scope: "BOTH"
+        dynamic: true
+        notes: "Per-connection buffer - helps with ORDER BY optimization"
+      
+      join_buffer_size:
+        value: "2M"
+        unit: "memory"
+        impact: "Buffer size for joins without indexes"
+        critical_threshold: "256K"
+        scope: "BOTH"
+        dynamic: true
+        notes: "Per-connection buffer - increase for complex joins"
+      
+      table_open_cache:
+        value: 4000
+        unit: null
+        impact: "Number of open tables for all threads"
+        critical_threshold: 400
+        scope: "GLOBAL"
+        dynamic: true
+        notes: "Increase for databases with many tables"
+
+  OLAP:
+    description: "Online Analytical Processing - optimized for complex queries and data analysis"
+    settings:
+      max_connections:
+        value: 50
+        unit: null
+        impact: "Maximum number of concurrent client connections"
+        critical_threshold: 10
+        scope: "GLOBAL"
+        dynamic: true
+        notes: "OLAP typically has fewer but longer-running connections"
+      
+      innodb_buffer_pool_size:
+        value: "32G"
+        unit: "memory"
+        impact: "InnoDB buffer pool size for caching data and indexes"
+        critical_threshold: "4G"
+        scope: "GLOBAL"
+        dynamic: false
+        notes: "Should be 70-80% of RAM - OLAP benefits from larger cache"
+      
+      sort_buffer_size:
+        value: "16M"
+        unit: "memory"
+        impact: "Buffer size for sorting operations"
+        critical_threshold: "2M"
+        scope: "BOTH"
+        dynamic: true
+        notes: "OLAP queries often require large sorts"
+      
+      read_buffer_size:
+        value: "8M"
+        unit: "memory"
+        impact: "Buffer size for sequential table scans"
+        critical_threshold: "1M"
+        scope: "BOTH"
+        dynamic: true
+        notes: "OLAP often performs full table scans"
+      
+      join_buffer_size:
+        value: "16M"
+        unit: "memory"
+        impact: "Buffer size for joins without indexes"
+        critical_threshold: "2M"
+        scope: "BOTH"
+        dynamic: true
+        notes: "OLAP queries frequently perform complex joins"
+      
+      tmp_table_size:
+        value: "256M"
+        unit: "memory"
+        impact: "Maximum size of internal in-memory temporary tables"
+        critical_threshold: "64M"
+        scope: "GLOBAL"
+        dynamic: true
+        notes: "OLAP queries often create large temporary tables"
+      
+      max_heap_table_size:
+        value: "256M"
+        unit: "memory"
+        impact: "Maximum size for user-created MEMORY tables"
+        critical_threshold: "64M"
+        scope: "GLOBAL"
+        dynamic: true
+        notes: "Should match tmp_table_size"
+      
+      # Include other OLAP-specific optimizations...
+
+  Mixed:
+    description: "Balanced configuration for mixed OLTP and OLAP workloads"
+    settings:
+      max_connections:
+        value: 100
+        unit: null
+        impact: "Maximum number of concurrent client connections"
+        critical_threshold: 30
+        scope: "GLOBAL"
+        dynamic: true
+        notes: "Balance between OLTP concurrency and OLAP resource needs"
+      
+      innodb_buffer_pool_size:
+        value: "8G"
+        unit: "memory"
+        impact: "InnoDB buffer pool size for caching data and indexes"
+        critical_threshold: "2G"
+        scope: "GLOBAL"
+        dynamic: false
+        notes: "Moderate size to serve both workload types"
+      
+      sort_buffer_size:
+        value: "4M"
+        unit: "memory"
+        impact: "Buffer size for sorting operations"
+        critical_threshold: "512K"
+        scope: "BOTH"
+        dynamic: true
+        notes: "Compromise between OLTP and OLAP needs"
+      
+      # Include other mixed workload settings...
+
+# Version-specific overrides
+version_overrides:
+  mysql_5.7:
+    # Settings specific to MySQL 5.7
+    query_cache_size:
+      notes: "Still available in 5.7 but use with caution"
+  
+  mysql_8.0:
+    # Settings specific to MySQL 8.0+
+    innodb_log_file_size:
+      dynamic: true
+      notes: "Dynamic in MySQL 8.0.30+"
+    
+    query_cache_size:
+      value: 0
+      notes: "Removed in MySQL 8.0 - not configurable"
+    
+    query_cache_type:
+      value: 0
+      notes: "Removed in MySQL 8.0 - not configurable"
+  
+  mariadb_10.5:
+    # Settings specific to MariaDB 10.5+
+    # MariaDB has some different optimizations
+    notes: "MariaDB 10.5+ supports SET PERSIST"
+
+# Hardware-specific recommendations
+hardware_profiles:
+  small:
+    # Up to 4GB RAM, 2 CPUs
+    description: "Small instance - development/testing"
+    multipliers:
+      innodb_buffer_pool_size: 0.5  # 50% of default
+      max_connections: 0.5
+  
+  medium:
+    # 8-16GB RAM, 4-8 CPUs
+    description: "Medium instance - small production"
+    multipliers:
+      innodb_buffer_pool_size: 1.0  # Use defaults
+      max_connections: 1.0
+  
+  large:
+    # 32-64GB RAM, 16+ CPUs
+    description: "Large instance - production"
+    multipliers:
+      innodb_buffer_pool_size: 4.0  # 4x defaults
+      max_connections: 2.0
+  
+  xlarge:
+    # 128GB+ RAM, 32+ CPUs
+    description: "Extra large instance - high-performance production"
+    multipliers:
+      innodb_buffer_pool_size: 16.0
+      max_connections: 3.0
