@@ -1,0 +1,12 @@
+database:
+  type: mysql  # or 'mariadb' - both work the same
+  host: localhost
+  port: 3306
+  database: testdb
+  username: root
+  password: password
+
+logging: 
+  filename: logging/{session_id}.db
+  auto_create: true
+  auto_backup: true

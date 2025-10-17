@@ -1,5 +1,5 @@
 """
-Unit tests for db_connection module.
+Unit tests for db_connection module (PostgreSQL).
 
 This test suite ensures comprehensive coverage of the database connection
 decorator and connection pool management, using mocks to avoid actual database
@@ -7,7 +7,7 @@ connections during testing.
 """
 
 import unittest
-from unittest.mock import MagicMock, Mock, patch, call
+from unittest.mock import MagicMock, Mock, patch
 from typing import Any
 
 import psycopg2
@@ -28,15 +28,19 @@ class TestDatabaseConnectionPool(unittest.TestCase):
         """Set up test fixtures."""
         # Reset singleton for each test
         DatabaseConnectionPool._instance = None
-        DatabaseConnectionPool._pool = None
+        DatabaseConnectionPool._pg_pool = None
+        DatabaseConnectionPool._mysql_pool = None
+        DatabaseConnectionPool._db_type = None
     
     def tearDown(self) -> None:
         """Clean up test fixtures."""
         pool = DatabaseConnectionPool()
-        if pool._pool:
+        if pool._pg_pool:
             pool.close_all()
         DatabaseConnectionPool._instance = None
-        DatabaseConnectionPool._pool = None
+        DatabaseConnectionPool._pg_pool = None
+        DatabaseConnectionPool._mysql_pool = None
+        DatabaseConnectionPool._db_type = None
     
     def test_singleton_pattern(self) -> None:
         """Test that DatabaseConnectionPool is a singleton."""
@@ -45,14 +49,14 @@ class TestDatabaseConnectionPool(unittest.TestCase):
         
         self.assertIs(pool1, pool2)
     
-    @patch('tuning_fork.shared.decorators.db_connection.psycopg2.pool.ThreadedConnectionPool')
+    @patch('tuning_fork.shared.decorators.db_connection.pg_pool.ThreadedConnectionPool')
     def test_initialize_pool_success(self, mock_pool_class: Mock) -> None:
         """Test successful pool initialization."""
         mock_pool = MagicMock()
         mock_pool_class.return_value = mock_pool
         
         pool = DatabaseConnectionPool()
-        pool.initialize(
+        pool.initialize_postgresql(
             host='localhost',
             port=5432,
             database='testdb',
@@ -69,16 +73,16 @@ class TestDatabaseConnectionPool(unittest.TestCase):
             password='testpass',
             connect_timeout=10
         )
-        self.assertIsNotNone(pool._pool)
+        self.assertIsNotNone(pool._pg_pool)
     
-    @patch('tuning_fork.shared.decorators.db_connection.psycopg2.pool.ThreadedConnectionPool')
+    @patch('tuning_fork.shared.decorators.db_connection.pg_pool.ThreadedConnectionPool')
     def test_initialize_pool_with_custom_connections(self, mock_pool_class: Mock) -> None:
         """Test pool initialization with custom min/max connections."""
         mock_pool = MagicMock()
         mock_pool_class.return_value = mock_pool
         
         pool = DatabaseConnectionPool()
-        pool.initialize(
+        pool.initialize_postgresql(
             host='localhost',
             port=5432,
             database='testdb',
@@ -93,14 +97,14 @@ class TestDatabaseConnectionPool(unittest.TestCase):
         self.assertEqual(call_args[0][0], 5)  # min_connections
         self.assertEqual(call_args[0][1], 20)  # max_connections
     
-    @patch('tuning_fork.shared.decorators.db_connection.psycopg2.pool.ThreadedConnectionPool')
+    @patch('tuning_fork.shared.decorators.db_connection.pg_pool.ThreadedConnectionPool')
     def test_initialize_pool_already_initialized(self, mock_pool_class: Mock) -> None:
         """Test that re-initialization is skipped if pool exists."""
         mock_pool = MagicMock()
         mock_pool_class.return_value = mock_pool
         
         pool = DatabaseConnectionPool()
-        pool.initialize(
+        pool.initialize_postgresql(
             host='localhost',
             port=5432,
             database='testdb',
@@ -109,7 +113,7 @@ class TestDatabaseConnectionPool(unittest.TestCase):
         )
         
         # Call initialize again
-        pool.initialize(
+        pool.initialize_postgresql(
             host='localhost',
             port=5432,
             database='testdb',
@@ -120,7 +124,7 @@ class TestDatabaseConnectionPool(unittest.TestCase):
         # Should only be called once
         mock_pool_class.assert_called_once()
     
-    @patch('tuning_fork.shared.decorators.db_connection.psycopg2.pool.ThreadedConnectionPool')
+    @patch('tuning_fork.shared.decorators.db_connection.pg_pool.ThreadedConnectionPool')
     def test_initialize_pool_failure(self, mock_pool_class: Mock) -> None:
         """Test pool initialization failure handling."""
         mock_pool_class.side_effect = psycopg2.OperationalError("Connection failed")
@@ -128,7 +132,7 @@ class TestDatabaseConnectionPool(unittest.TestCase):
         pool = DatabaseConnectionPool()
         
         with self.assertRaises(DatabaseConnectionError) as context:
-            pool.initialize(
+            pool.initialize_postgresql(
                 host='localhost',
                 port=5432,
                 database='testdb',
@@ -136,9 +140,9 @@ class TestDatabaseConnectionPool(unittest.TestCase):
                 password='testpass'
             )
         
-        self.assertIn("Failed to initialize connection pool", str(context.exception))
+        self.assertIn("Failed to initialize", str(context.exception))
     
-    @patch('tuning_fork.shared.decorators.db_connection.psycopg2.pool.ThreadedConnectionPool')
+    @patch('tuning_fork.shared.decorators.db_connection.pg_pool.ThreadedConnectionPool')
     def test_get_connection_success(self, mock_pool_class: Mock) -> None:
         """Test successful connection retrieval from pool."""
         mock_pool = MagicMock()
@@ -147,7 +151,7 @@ class TestDatabaseConnectionPool(unittest.TestCase):
         mock_pool_class.return_value = mock_pool
         
         pool = DatabaseConnectionPool()
-        pool.initialize(
+        pool.initialize_postgresql(
             host='localhost',
             port=5432,
             database='testdb',
@@ -155,7 +159,7 @@ class TestDatabaseConnectionPool(unittest.TestCase):
             password='testpass'
         )
         
-        connection = pool.get_connection()
+        connection = pool.get_postgresql_connection()
         
         self.assertEqual(connection, mock_connection)
         mock_pool.getconn.assert_called_once()
@@ -165,11 +169,11 @@ class TestDatabaseConnectionPool(unittest.TestCase):
         pool = DatabaseConnectionPool()
         
         with self.assertRaises(DatabaseConnectionError) as context:
-            pool.get_connection()
+            pool.get_postgresql_connection()
         
-        self.assertIn("Connection pool not initialized", str(context.exception))
+        self.assertIn("not initialized", str(context.exception))
     
-    @patch('tuning_fork.shared.decorators.db_connection.psycopg2.pool.ThreadedConnectionPool')
+    @patch('tuning_fork.shared.decorators.db_connection.pg_pool.ThreadedConnectionPool')
     def test_get_connection_failure(self, mock_pool_class: Mock) -> None:
         """Test connection retrieval failure."""
         mock_pool = MagicMock()
@@ -177,7 +181,7 @@ class TestDatabaseConnectionPool(unittest.TestCase):
         mock_pool_class.return_value = mock_pool
         
         pool = DatabaseConnectionPool()
-        pool.initialize(
+        pool.initialize_postgresql(
             host='localhost',
             port=5432,
             database='testdb',
@@ -186,11 +190,11 @@ class TestDatabaseConnectionPool(unittest.TestCase):
         )
         
         with self.assertRaises(DatabaseConnectionError) as context:
-            pool.get_connection()
+            pool.get_postgresql_connection()
         
-        self.assertIn("Failed to get connection from pool", str(context.exception))
+        self.assertIn("Failed to get", str(context.exception))
     
-    @patch('tuning_fork.shared.decorators.db_connection.psycopg2.pool.ThreadedConnectionPool')
+    @patch('tuning_fork.shared.decorators.db_connection.pg_pool.ThreadedConnectionPool')
     def test_return_connection_success(self, mock_pool_class: Mock) -> None:
         """Test successful connection return to pool."""
         mock_pool = MagicMock()
@@ -198,7 +202,7 @@ class TestDatabaseConnectionPool(unittest.TestCase):
         mock_pool_class.return_value = mock_pool
         
         pool = DatabaseConnectionPool()
-        pool.initialize(
+        pool.initialize_postgresql(
             host='localhost',
             port=5432,
             database='testdb',
@@ -206,11 +210,11 @@ class TestDatabaseConnectionPool(unittest.TestCase):
             password='testpass'
         )
         
-        pool.return_connection(mock_connection)
+        pool.return_postgresql_connection(mock_connection)
         
         mock_pool.putconn.assert_called_once_with(mock_connection)
     
-    @patch('tuning_fork.shared.decorators.db_connection.psycopg2.pool.ThreadedConnectionPool')
+    @patch('tuning_fork.shared.decorators.db_connection.pg_pool.ThreadedConnectionPool')
     def test_return_connection_with_close(self, mock_pool_class: Mock) -> None:
         """Test returning connection with close flag."""
         mock_pool = MagicMock()
@@ -218,7 +222,7 @@ class TestDatabaseConnectionPool(unittest.TestCase):
         mock_pool_class.return_value = mock_pool
         
         pool = DatabaseConnectionPool()
-        pool.initialize(
+        pool.initialize_postgresql(
             host='localhost',
             port=5432,
             database='testdb',
@@ -226,7 +230,7 @@ class TestDatabaseConnectionPool(unittest.TestCase):
             password='testpass'
         )
         
-        pool.return_connection(mock_connection, close=True)
+        pool.return_postgresql_connection(mock_connection, close=True)
         
         mock_pool.putconn.assert_called_once_with(mock_connection, close=True)
     
@@ -236,16 +240,16 @@ class TestDatabaseConnectionPool(unittest.TestCase):
         mock_connection = MagicMock()
         
         # Should not raise exception, just log warning
-        pool.return_connection(mock_connection)
+        pool.return_postgresql_connection(mock_connection)
     
-    @patch('tuning_fork.shared.decorators.db_connection.psycopg2.pool.ThreadedConnectionPool')
+    @patch('tuning_fork.shared.decorators.db_connection.pg_pool.ThreadedConnectionPool')
     def test_close_all_connections(self, mock_pool_class: Mock) -> None:
         """Test closing all connections in pool."""
         mock_pool = MagicMock()
         mock_pool_class.return_value = mock_pool
         
         pool = DatabaseConnectionPool()
-        pool.initialize(
+        pool.initialize_postgresql(
             host='localhost',
             port=5432,
             database='testdb',
@@ -256,10 +260,9 @@ class TestDatabaseConnectionPool(unittest.TestCase):
         pool.close_all()
         
         mock_pool.closeall.assert_called_once()
-        self.assertIsNone(pool._pool)
-
-
-    @patch('tuning_fork.shared.decorators.db_connection.psycopg2.pool.ThreadedConnectionPool')
+        self.assertIsNone(pool._pg_pool)
+    
+    @patch('tuning_fork.shared.decorators.db_connection.pg_pool.ThreadedConnectionPool')
     def test_return_connection_with_error(self, mock_pool_class: Mock) -> None:
         """Test returning connection with error."""
         mock_pool = MagicMock()
@@ -268,7 +271,7 @@ class TestDatabaseConnectionPool(unittest.TestCase):
         mock_pool_class.return_value = mock_pool
         
         pool = DatabaseConnectionPool()
-        pool.initialize(
+        pool.initialize_postgresql(
             host='localhost',
             port=5432,
             database='testdb',
@@ -277,7 +280,7 @@ class TestDatabaseConnectionPool(unittest.TestCase):
         )
         
         # Should not raise exception, just log warning
-        pool.return_connection(mock_connection)
+        pool.return_postgresql_connection(mock_connection)
 
 
 class TestGetDbConnection(unittest.TestCase):
@@ -286,12 +289,15 @@ class TestGetDbConnection(unittest.TestCase):
     def setUp(self) -> None:
         """Set up test fixtures."""
         DatabaseConnectionPool._instance = None
-        DatabaseConnectionPool._pool = None
+        DatabaseConnectionPool._pg_pool = None
+        DatabaseConnectionPool._mysql_pool = None
+        DatabaseConnectionPool._db_type = None
         
         # Create mock config
         self.mock_config = MagicMock(spec=Config)
         self.mock_config.config = {
             'database': {
+                'type': 'postgresql',
                 'host': 'localhost',
                 'port': 5432,
                 'database': 'testdb',
@@ -303,12 +309,14 @@ class TestGetDbConnection(unittest.TestCase):
     def tearDown(self) -> None:
         """Clean up test fixtures."""
         pool = DatabaseConnectionPool()
-        if pool._pool:
+        if pool._pg_pool:
             pool.close_all()
         DatabaseConnectionPool._instance = None
-        DatabaseConnectionPool._pool = None
+        DatabaseConnectionPool._pg_pool = None
+        DatabaseConnectionPool._mysql_pool = None
+        DatabaseConnectionPool._db_type = None
     
-    @patch('tuning_fork.shared.decorators.db_connection.psycopg2.pool.ThreadedConnectionPool')
+    @patch('tuning_fork.shared.decorators.db_connection.pg_pool.ThreadedConnectionPool')
     def test_context_manager_success(self, mock_pool_class: Mock) -> None:
         """Test successful context manager usage."""
         mock_pool = MagicMock()
@@ -326,7 +334,7 @@ class TestGetDbConnection(unittest.TestCase):
         mock_cursor.close.assert_called_once()
         mock_pool.putconn.assert_called_once_with(mock_connection)
     
-    @patch('tuning_fork.shared.decorators.db_connection.psycopg2.pool.ThreadedConnectionPool')
+    @patch('tuning_fork.shared.decorators.db_connection.pg_pool.ThreadedConnectionPool')
     def test_context_manager_with_exception(self, mock_pool_class: Mock) -> None:
         """Test context manager rollback on exception."""
         mock_pool = MagicMock()
@@ -336,7 +344,7 @@ class TestGetDbConnection(unittest.TestCase):
         mock_pool.getconn.return_value = mock_connection
         mock_pool_class.return_value = mock_pool
         
-        with self.assertRaises(ValueError):
+        with self.assertRaises(DatabaseConnectionError):
             with get_db_connection(self.mock_config) as (conn, cursor):
                 raise ValueError("Test error")
         
@@ -344,7 +352,7 @@ class TestGetDbConnection(unittest.TestCase):
         mock_connection.commit.assert_not_called()
         mock_cursor.close.assert_called_once()
     
-    @patch('tuning_fork.shared.decorators.db_connection.psycopg2.pool.ThreadedConnectionPool')
+    @patch('tuning_fork.shared.decorators.db_connection.pg_pool.ThreadedConnectionPool')
     def test_context_manager_with_database_exception(self, mock_pool_class: Mock) -> None:
         """Test context manager rollback on database exception."""
         mock_pool = MagicMock()
@@ -379,12 +387,15 @@ class TestWithDatabaseDecorator(unittest.TestCase):
     def setUp(self) -> None:
         """Set up test fixtures."""
         DatabaseConnectionPool._instance = None
-        DatabaseConnectionPool._pool = None
+        DatabaseConnectionPool._pg_pool = None
+        DatabaseConnectionPool._mysql_pool = None
+        DatabaseConnectionPool._db_type = None
         
         # Create mock config
         self.mock_config = MagicMock(spec=Config)
         self.mock_config.config = {
             'database': {
+                'type': 'postgresql',
                 'host': 'localhost',
                 'port': 5432,
                 'database': 'testdb',
@@ -396,12 +407,14 @@ class TestWithDatabaseDecorator(unittest.TestCase):
     def tearDown(self) -> None:
         """Clean up test fixtures."""
         pool = DatabaseConnectionPool()
-        if pool._pool:
+        if pool._pg_pool:
             pool.close_all()
         DatabaseConnectionPool._instance = None
-        DatabaseConnectionPool._pool = None
+        DatabaseConnectionPool._pg_pool = None
+        DatabaseConnectionPool._mysql_pool = None
+        DatabaseConnectionPool._db_type = None
     
-    @patch('tuning_fork.shared.decorators.db_connection.psycopg2.pool.ThreadedConnectionPool')
+    @patch('tuning_fork.shared.decorators.db_connection.pg_pool.ThreadedConnectionPool')
     def test_decorator_basic_usage(self, mock_pool_class: Mock) -> None:
         """Test basic decorator usage with cursor injection."""
         mock_pool = MagicMock()
@@ -422,7 +435,7 @@ class TestWithDatabaseDecorator(unittest.TestCase):
         mock_cursor.close.assert_called_once()
         mock_pool.putconn.assert_called_once()
     
-    @patch('tuning_fork.shared.decorators.db_connection.psycopg2.pool.ThreadedConnectionPool')
+    @patch('tuning_fork.shared.decorators.db_connection.pg_pool.ThreadedConnectionPool')
     def test_decorator_with_autocommit(self, mock_pool_class: Mock) -> None:
         """Test decorator with autocommit enabled."""
         mock_pool = MagicMock()
@@ -441,7 +454,7 @@ class TestWithDatabaseDecorator(unittest.TestCase):
         self.assertEqual(result, "success")
         mock_connection.commit.assert_called_once()
     
-    @patch('tuning_fork.shared.decorators.db_connection.psycopg2.pool.ThreadedConnectionPool')
+    @patch('tuning_fork.shared.decorators.db_connection.pg_pool.ThreadedConnectionPool')
     def test_decorator_pass_connection_and_cursor(self, mock_pool_class: Mock) -> None:
         """Test decorator passing both connection and cursor."""
         mock_pool = MagicMock()
@@ -460,7 +473,7 @@ class TestWithDatabaseDecorator(unittest.TestCase):
         result = test_function()
         self.assertEqual(result, "success")
     
-    @patch('tuning_fork.shared.decorators.db_connection.psycopg2.pool.ThreadedConnectionPool')
+    @patch('tuning_fork.shared.decorators.db_connection.pg_pool.ThreadedConnectionPool')
     def test_decorator_pass_only_connection(self, mock_pool_class: Mock) -> None:
         """Test decorator passing only connection."""
         mock_pool = MagicMock()
@@ -479,7 +492,7 @@ class TestWithDatabaseDecorator(unittest.TestCase):
         result = test_function()
         self.assertEqual(result, "success")
     
-    @patch('tuning_fork.shared.decorators.db_connection.psycopg2.pool.ThreadedConnectionPool')
+    @patch('tuning_fork.shared.decorators.db_connection.pg_pool.ThreadedConnectionPool')
     def test_decorator_with_function_args(self, mock_pool_class: Mock) -> None:
         """Test decorator with function arguments."""
         mock_pool = MagicMock()
@@ -496,7 +509,7 @@ class TestWithDatabaseDecorator(unittest.TestCase):
         result = test_function(42, "test")
         self.assertEqual(result, "42-test")
     
-    @patch('tuning_fork.shared.decorators.db_connection.psycopg2.pool.ThreadedConnectionPool')
+    @patch('tuning_fork.shared.decorators.db_connection.pg_pool.ThreadedConnectionPool')
     def test_decorator_with_exception(self, mock_pool_class: Mock) -> None:
         """Test decorator rollback on exception."""
         mock_pool = MagicMock()
@@ -510,13 +523,13 @@ class TestWithDatabaseDecorator(unittest.TestCase):
         def test_function(cursor=None) -> None:
             raise ValueError("Test error")
         
-        with self.assertRaises(ValueError):
+        with self.assertRaises(DatabaseConnectionError):
             test_function()
         
         mock_connection.rollback.assert_called_once()
         mock_connection.commit.assert_not_called()
     
-    @patch('tuning_fork.shared.decorators.db_connection.psycopg2.pool.ThreadedConnectionPool')
+    @patch('tuning_fork.shared.decorators.db_connection.pg_pool.ThreadedConnectionPool')
     def test_decorator_with_database_error(self, mock_pool_class: Mock) -> None:
         """Test decorator handling of database errors."""
         mock_pool = MagicMock()
@@ -535,7 +548,7 @@ class TestWithDatabaseDecorator(unittest.TestCase):
         
         mock_connection.rollback.assert_called_once()
     
-    @patch('tuning_fork.shared.decorators.db_connection.psycopg2.pool.ThreadedConnectionPool')
+    @patch('tuning_fork.shared.decorators.db_connection.pg_pool.ThreadedConnectionPool')
     def test_decorator_preserves_function_metadata(self, mock_pool_class: Mock) -> None:
         """Test that decorator preserves original function metadata."""
         mock_pool = MagicMock()
@@ -566,7 +579,7 @@ class TestWithDatabaseDecorator(unittest.TestCase):
         
         self.assertIn("No database configuration found", str(context.exception))
     
-    @patch('tuning_fork.shared.decorators.db_connection.psycopg2.pool.ThreadedConnectionPool')
+    @patch('tuning_fork.shared.decorators.db_connection.pg_pool.ThreadedConnectionPool')
     def test_decorator_with_return_value(self, mock_pool_class: Mock) -> None:
         """Test that decorator properly returns function result."""
         mock_pool = MagicMock()
@@ -582,9 +595,8 @@ class TestWithDatabaseDecorator(unittest.TestCase):
         
         result = test_function()
         self.assertEqual(result, {"status": "ok", "data": [1, 2, 3]})
-
-
-    @patch('tuning_fork.shared.decorators.db_connection.psycopg2.pool.ThreadedConnectionPool')
+    
+    @patch('tuning_fork.shared.decorators.db_connection.pg_pool.ThreadedConnectionPool')
     def test_decorator_cursor_close_error(self, mock_pool_class: Mock) -> None:
         """Test decorator handles cursor close errors gracefully."""
         mock_pool = MagicMock()
