@@ -10,6 +10,7 @@ import logging
 from typing import Any, Optional
 
 from tuning_fork.config import Config
+from tuning_fork.testing_modules.pgsql import report_settings
 
 # Module-level logger
 logger = logging.getLogger(__name__)
@@ -99,13 +100,24 @@ class ModuleRunner:
         try:
             if module_name == 'check_settings':
                 # Import at runtime to avoid circular dependencies
-                from tuning_fork.testing_modules.pgsql.config import (
+                # OLD: from tuning_fork.testing_modules.pgsql.config import (
+                # NEW:
+                from tuning_fork.testing_modules.pgsql import (
                     check_settings,
                     report_settings,
                 )
                 
-                # Execute check
-                results = check_settings(self.config)
+                # Get workload type from config (default to OLTP)
+                workload_type = self.config.get(
+                    'testing_modules.pgsql.workload_type',
+                    'OLTP'
+                )
+                
+                # Execute check with workload type
+                results = check_settings(
+                    self.config,
+                    workload_type=workload_type
+                )
                 
                 # Get report format from config
                 report_format = self.config.get(
@@ -120,7 +132,8 @@ class ModuleRunner:
                     'status': 'success',
                     'module': module_name,
                     'results': results,
-                    'report': report
+                    'report': report,
+                    'workload_type': workload_type
                 }
             
             else:

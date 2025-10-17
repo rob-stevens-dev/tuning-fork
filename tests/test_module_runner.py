@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 from tuning_fork.config import Config
 from tuning_fork.module_runner import ModuleRunner, ModuleRunnerError
-from tuning_fork.testing_modules.pgsql.config import CheckResult
+from tuning_fork.testing_modules.pgsql import CheckResult
 
 
 class TestModuleRunner(unittest.TestCase):
@@ -108,8 +108,8 @@ class TestModuleRunner(unittest.TestCase):
         self.assertIn('check_connections', modules)
         self.assertIn('check_performance', modules)
     
-    @patch('tuning_fork.testing_modules.pgsql.config.report_settings')
-    @patch('tuning_fork.testing_modules.pgsql.config.check_settings')
+    @patch('tuning_fork.testing_modules.pgsql.report_settings')
+    @patch('tuning_fork.testing_modules.pgsql.check_settings')
     def test_run_pgsql_module_check_settings(
         self,
         mock_check: Mock,
@@ -137,8 +137,9 @@ class TestModuleRunner(unittest.TestCase):
         self.assertEqual(result['module'], 'check_settings')
         self.assertEqual(result['results'], mock_results)
         self.assertEqual(result['report'], "Test report")
+        self.assertEqual(result['workload_type'], 'OLTP')
         
-        mock_check.assert_called_once_with(self.mock_config)
+        mock_check.assert_called_once_with(self.mock_config, workload_type='OLTP')
         mock_report.assert_called_once()
     
     def test_run_pgsql_module_unknown_module(self) -> None:
@@ -151,7 +152,7 @@ class TestModuleRunner(unittest.TestCase):
         self.assertEqual(result['module'], 'unknown_module')
         self.assertIn('Unknown PostgreSQL module', result['error'])
     
-    @patch('tuning_fork.testing_modules.pgsql.config.check_settings')
+    @patch('tuning_fork.testing_modules.pgsql.check_settings')
     def test_run_pgsql_module_with_exception(self, mock_check: Mock) -> None:
         """Test handling of exceptions during module execution."""
         mock_check.side_effect = Exception("Database connection failed")
@@ -162,8 +163,8 @@ class TestModuleRunner(unittest.TestCase):
         self.assertEqual(result['status'], 'error')
         self.assertIn('Database connection failed', result['error'])
     
-    @patch('tuning_fork.testing_modules.pgsql.config.report_settings')
-    @patch('tuning_fork.testing_modules.pgsql.config.check_settings')
+    @patch('tuning_fork.testing_modules.pgsql.report_settings')
+    @patch('tuning_fork.testing_modules.pgsql.check_settings')
     def test_run_pgsql_module_with_custom_report_format(
         self,
         mock_check: Mock,
@@ -185,8 +186,8 @@ class TestModuleRunner(unittest.TestCase):
         call_args = mock_report.call_args
         self.assertEqual(call_args[1]['format'], 'json')
     
-    @patch('tuning_fork.testing_modules.pgsql.config.report_settings')
-    @patch('tuning_fork.testing_modules.pgsql.config.check_settings')
+    @patch('tuning_fork.testing_modules.pgsql.report_settings')
+    @patch('tuning_fork.testing_modules.pgsql.check_settings')
     def test_run_modules_pgsql(
         self,
         mock_check: Mock,
@@ -224,8 +225,8 @@ class TestModuleRunner(unittest.TestCase):
         self.assertEqual(results[0]['status'], 'error')
         self.assertIn('Unsupported database type', results[0]['error'])
     
-    @patch('tuning_fork.testing_modules.pgsql.config.report_settings')
-    @patch('tuning_fork.testing_modules.pgsql.config.check_settings')
+    @patch('tuning_fork.testing_modules.pgsql.report_settings')
+    @patch('tuning_fork.testing_modules.pgsql.check_settings')
     def test_run_modules_multiple_modules(
         self,
         mock_check: Mock,
@@ -246,8 +247,8 @@ class TestModuleRunner(unittest.TestCase):
         self.assertEqual(len(results), 2)
         self.assertTrue(all(r['status'] == 'success' for r in results))
     
-    @patch('tuning_fork.testing_modules.pgsql.config.report_settings')
-    @patch('tuning_fork.testing_modules.pgsql.config.check_settings')
+    @patch('tuning_fork.testing_modules.pgsql.report_settings')
+    @patch('tuning_fork.testing_modules.pgsql.check_settings')
     def test_run_modules_with_partial_failure(
         self,
         mock_check: Mock,
@@ -269,8 +270,8 @@ class TestModuleRunner(unittest.TestCase):
         self.assertEqual(results[0]['status'], 'success')
         self.assertEqual(results[1]['status'], 'error')
     
-    @patch('tuning_fork.testing_modules.pgsql.config.report_settings')
-    @patch('tuning_fork.testing_modules.pgsql.config.check_settings')
+    @patch('tuning_fork.testing_modules.pgsql.report_settings')
+    @patch('tuning_fork.testing_modules.pgsql.check_settings')
     def test_run_all_single_database(
         self,
         mock_check: Mock,
@@ -287,8 +288,8 @@ class TestModuleRunner(unittest.TestCase):
         self.assertEqual(len(all_results['pgsql']), 1)
         self.assertNotIn('mysql_mariadb', all_results)  # Disabled, so not included
     
-    @patch('tuning_fork.testing_modules.pgsql.config.report_settings')
-    @patch('tuning_fork.testing_modules.pgsql.config.check_settings')
+    @patch('tuning_fork.testing_modules.pgsql.report_settings')
+    @patch('tuning_fork.testing_modules.pgsql.check_settings')
     def test_run_all_multiple_databases(
         self,
         mock_check: Mock,
@@ -309,8 +310,8 @@ class TestModuleRunner(unittest.TestCase):
         self.assertIn('pgsql', all_results)
         # mysql_mariadb enabled but no modules, so no results
     
-    @patch('tuning_fork.testing_modules.pgsql.config.report_settings')
-    @patch('tuning_fork.testing_modules.pgsql.config.check_settings')
+    @patch('tuning_fork.testing_modules.pgsql.report_settings')
+    @patch('tuning_fork.testing_modules.pgsql.check_settings')
     def test_print_summary_with_results(
         self,
         mock_check: Mock,
@@ -386,8 +387,8 @@ class TestModuleRunner(unittest.TestCase):
         
         self.assertIn('No modules were executed', output)
     
-    @patch('tuning_fork.testing_modules.pgsql.config.report_settings')
-    @patch('tuning_fork.testing_modules.pgsql.config.check_settings')
+    @patch('tuning_fork.testing_modules.pgsql.report_settings')
+    @patch('tuning_fork.testing_modules.pgsql.check_settings')
     def test_print_summary_multiple_databases(
         self,
         mock_check: Mock,
